@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +23,10 @@ const Index = () => {
   const [cartOpen, setCartOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const categories = [
     { name: 'Двигатель', icon: 'Cog', color: 'bg-orange-500' },
@@ -33,14 +37,54 @@ const Index = () => {
     { name: 'Салон', icon: 'Armchair', color: 'bg-red-500' },
   ];
 
-  const products: Product[] = [
-    { id: 1, name: 'Тормозные колодки', article: 'BRK-2341', price: 2500, image: '/placeholder.svg', category: 'Тормоза', inStock: true },
-    { id: 2, name: 'Масляный фильтр', article: 'FLT-8923', price: 450, image: '/placeholder.svg', category: 'Двигатель', inStock: true },
-    { id: 3, name: 'Амортизатор передний', article: 'SUS-1122', price: 4800, image: '/placeholder.svg', category: 'Подвеска', inStock: true },
-    { id: 4, name: 'Свечи зажигания (комплект)', article: 'SPK-5544', price: 1200, image: '/placeholder.svg', category: 'Двигатель', inStock: true },
-    { id: 5, name: 'Тормозной диск', article: 'DSK-3367', price: 3200, image: '/placeholder.svg', category: 'Тормоза', inStock: false },
-    { id: 6, name: 'Воздушный фильтр', article: 'AIR-7788', price: 650, image: '/placeholder.svg', category: 'Двигатель', inStock: true },
-  ];
+  const API_URL = 'https://functions.poehali.dev/5fb23735-4379-497e-8ac7-cf1a586e328d';
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      let url = API_URL;
+      if (selectedCategory) {
+        url += `?category=${encodeURIComponent(selectedCategory)}`;
+      }
+      if (searchQuery) {
+        url += selectedCategory ? '&' : '?';
+        url += `search=${encodeURIComponent(searchQuery)}`;
+      }
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      setProducts(data.products || []);
+    } catch (error) {
+      console.error('Ошибка загрузки товаров:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const syncWithSuppliers = async () => {
+    try {
+      setSyncing(true);
+      const response = await fetch(`${API_URL}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      console.log('Синхронизация завершена:', data);
+      await fetchProducts();
+    } catch (error) {
+      console.error('Ошибка синхронизации:', error);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, [selectedCategory]);
+
+  const handleSearch = () => {
+    fetchProducts();
+  };
 
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.id === product.id);
@@ -92,6 +136,16 @@ const Index = () => {
             </nav>
 
             <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={syncWithSuppliers}
+                disabled={syncing}
+                className="hidden md:flex"
+              >
+                <Icon name={syncing ? "Loader2" : "RefreshCw"} size={16} className={syncing ? "animate-spin mr-2" : "mr-2"} />
+                {syncing ? 'Синхронизация...' : 'Обновить цены'}
+              </Button>
               <Button variant="ghost" size="icon" className="relative">
                 <Icon name="User" size={20} />
               </Button>
@@ -132,10 +186,16 @@ const Index = () => {
                   className="pl-12 h-14 text-lg border-2 focus:border-orange-500"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 />
               </div>
-              <Button size="lg" className="h-14 px-8 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700">
-                Найти
+              <Button 
+                size="lg" 
+                className="h-14 px-8 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700"
+                onClick={handleSearch}
+                disabled={loading}
+              >
+                {loading ? <Icon name="Loader2" size={20} className="animate-spin" /> : 'Найти'}
               </Button>
             </div>
           </div>
@@ -149,8 +209,11 @@ const Index = () => {
             {categories.map((cat, idx) => (
               <Card 
                 key={idx} 
-                className="group cursor-pointer hover:shadow-xl transition-all duration-300 border-2 hover:border-orange-500 animate-scale-in"
+                className={`group cursor-pointer hover:shadow-xl transition-all duration-300 border-2 animate-scale-in ${
+                  selectedCategory === cat.name ? 'border-orange-500 shadow-lg' : 'hover:border-orange-500'
+                }`}
                 style={{ animationDelay: `${idx * 0.1}s` }}
+                onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)}
               >
                 <CardContent className="p-6 text-center">
                   <div className={`${cat.color} w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform`}>
@@ -162,7 +225,29 @@ const Index = () => {
             ))}
           </div>
 
-          <h3 className="text-3xl font-bold mb-8">Популярные товары</h3>
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-3xl font-bold">
+              {selectedCategory ? `Категория: ${selectedCategory}` : 'Популярные товары'}
+            </h3>
+            {selectedCategory && (
+              <Button variant="outline" onClick={() => setSelectedCategory(null)}>
+                <Icon name="X" size={16} className="mr-2" />
+                Сбросить фильтр
+              </Button>
+            )}
+          </div>
+          
+          {loading ? (
+            <div className="text-center py-20">
+              <Icon name="Loader2" size={48} className="mx-auto animate-spin text-orange-500 mb-4" />
+              <p className="text-slate-600">Загрузка товаров...</p>
+            </div>
+          ) : products.length === 0 ? (
+            <div className="text-center py-20">
+              <Icon name="Package" size={48} className="mx-auto text-slate-300 mb-4" />
+              <p className="text-slate-600">Товары не найдены</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {products.map((product, idx) => (
               <Card 
@@ -201,6 +286,7 @@ const Index = () => {
               </Card>
             ))}
           </div>
+          )}
         </div>
       </section>
 
