@@ -1,0 +1,33 @@
+{
+  "tests": [
+    {
+      "name": "Create new order",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "customer_name": "Иван Иванов",
+        "customer_phone": "+7 (999) 123-45-67",
+        "customer_email": "test@example.com",
+        "delivery_address": "г. Москва, ул. Тестовая, д. 1",
+        "delivery_method": "Курьер",
+        "payment_method": "Наличные",
+        "items": [
+          {
+            "product_id": 1,
+            "product_name": "Тестовая деталь",
+            "product_article": "TEST-001",
+            "quantity": 2,
+            "price": 1500.50
+          }
+        ]
+      },
+      "expectedStatus": 201
+    },
+    {
+      "name": "Get all orders",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}

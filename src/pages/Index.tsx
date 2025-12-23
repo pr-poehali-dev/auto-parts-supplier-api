@@ -27,6 +27,14 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'form'>('cart');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState('Курьер');
+  const [paymentMethod, setPaymentMethod] = useState('Наличные');
+  const [submitting, setSubmitting] = useState(false);
 
   const categories = [
     { name: 'Двигатель', icon: 'Cog', color: 'bg-orange-500' },
@@ -37,12 +45,13 @@ const Index = () => {
     { name: 'Салон', icon: 'Armchair', color: 'bg-red-500' },
   ];
 
-  const API_URL = 'https://functions.poehali.dev/5fb23735-4379-497e-8ac7-cf1a586e328d';
+  const PRODUCTS_API_URL = 'https://functions.poehali.dev/5fb23735-4379-497e-8ac7-cf1a586e328d';
+  const ORDERS_API_URL = 'https://functions.poehali.dev/fa0f1871-09b4-4fb5-9467-0a65bd5f2792';
 
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      let url = API_URL;
+      let url = PRODUCTS_API_URL;
       if (selectedCategory) {
         url += `?category=${encodeURIComponent(selectedCategory)}`;
       }
@@ -64,7 +73,7 @@ const Index = () => {
   const syncWithSuppliers = async () => {
     try {
       setSyncing(true);
-      const response = await fetch(`${API_URL}/sync`, {
+      const response = await fetch(`${PRODUCTS_API_URL}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -113,6 +122,57 @@ const Index = () => {
 
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  const handleCheckout = async () => {
+    if (!customerName || !customerPhone || !customerAddress) {
+      alert('Пожалуйста, заполните все обязательные поля');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const orderData = {
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_email: customerEmail,
+        delivery_address: customerAddress,
+        delivery_method: deliveryMethod,
+        payment_method: paymentMethod,
+        items: cart.map(item => ({
+          product_id: item.id,
+          product_name: item.name,
+          product_article: item.article,
+          quantity: item.quantity,
+          price: item.price
+        }))
+      };
+
+      const response = await fetch(ORDERS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
+      });
+
+      if (!response.ok) throw new Error('Ошибка при оформлении заказа');
+
+      const result = await response.json();
+      
+      alert(`Заказ №${result.order_id} успешно оформлен!\nМы свяжемся с вами в ближайшее время.`);
+      
+      setCart([]);
+      setCustomerName('');
+      setCustomerPhone('');
+      setCustomerEmail('');
+      setCustomerAddress('');
+      setCheckoutStep('cart');
+      setCartOpen(false);
+    } catch (error) {
+      console.error('Ошибка оформления заказа:', error);
+      alert('Произошла ошибка при оформлении заказа. Попробуйте еще раз.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -377,6 +437,113 @@ const Index = () => {
                 <Icon name="ShoppingCart" size={64} className="mx-auto text-slate-300 mb-4" />
                 <p className="text-slate-500">Корзина пуста</p>
               </div>
+            ) : checkoutStep === 'form' ? (
+              <div className="space-y-4">
+                <Button 
+                  variant="ghost" 
+                  onClick={() => setCheckoutStep('cart')}
+                  className="mb-4"
+                >
+                  <Icon name="ArrowLeft" size={18} className="mr-2" />
+                  Назад к корзине
+                </Button>
+                
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Имя *</label>
+                  <Input 
+                    placeholder="Иван Иванов"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Телефон *</label>
+                  <Input 
+                    placeholder="+7 (999) 123-45-67"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Email</label>
+                  <Input 
+                    type="email"
+                    placeholder="example@mail.ru"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Адрес доставки *</label>
+                  <Input 
+                    placeholder="г. Москва, ул. Примерная, д. 1"
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Способ доставки</label>
+                  <div className="space-y-2">
+                    {['Курьер', 'Самовывоз', 'Почта России'].map(method => (
+                      <label key={method} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="delivery"
+                          value={method}
+                          checked={deliveryMethod === method}
+                          onChange={(e) => setDeliveryMethod(e.target.value)}
+                          className="w-4 h-4"
+                        />
+                        <span>{method}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Способ оплаты</label>
+                  <div className="space-y-2">
+                    {['Наличные', 'Картой курьеру', 'Онлайн оплата'].map(method => (
+                      <label key={method} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="payment"
+                          value={method}
+                          checked={paymentMethod === method}
+                          onChange={(e) => setPaymentMethod(e.target.value)}
+                          className="w-4 h-4"
+                        />
+                        <span>{method}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t pt-4 mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-lg font-semibold">Итого:</span>
+                    <span className="text-2xl font-bold text-orange-600">{totalPrice.toLocaleString()} ₽</span>
+                  </div>
+                  <Button 
+                    className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-lg"
+                    onClick={handleCheckout}
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <>
+                        <Icon name="Loader2" size={18} className="mr-2 animate-spin" />
+                        Оформление...
+                      </>
+                    ) : (
+                      'Подтвердить заказ'
+                    )}
+                  </Button>
+                </div>
+              </div>
             ) : (
               <>
                 <div className="space-y-4 mb-6">
@@ -430,7 +597,10 @@ const Index = () => {
                     <span className="text-lg font-semibold">Итого:</span>
                     <span className="text-2xl font-bold text-orange-600">{totalPrice.toLocaleString()} ₽</span>
                   </div>
-                  <Button className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-lg">
+                  <Button 
+                    className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-lg"
+                    onClick={() => setCheckoutStep('form')}
+                  >
                     Оформить заказ
                   </Button>
                 </div>
